@@ -1,0 +1,35 @@
+* Common-source amplifier with resistive load (ngspice)
+* Measures bias point, gm, small-signal gain, -3 dB bandwidth and a
+* transient cross-check of the gain.
+.include spice/models/generic_180nm.lib
+
+* Load resistor: scripts/check.py changes this to sweep gain vs bandwidth
+.param rd=10k
+
+Vdd vdd 0 1.8
+Rd  vdd out {rd}
+M1  out g 0 0 nmos W=5u L=0.36u
+CL  out 0 1p
+* Gate bias 0.7 V, 1 V AC for the AC sweep, 10 mV / 100 kHz sine for the transient
+Vg  g 0 DC 0.7 AC 1 SIN(0.7 10m 100k)
+
+.control
+op
+let id_bias = -i(vdd)
+let vout_bias = v(out)
+let gm = @m1[gm]
+let gds = @m1[gds]
+print id_bias vout_bias gm gds
+dc Vg 0 1.8 0.005
+wrdata build/cs_dc.dat v(out)
+ac dec 40 1k 10g
+meas ac gain_db   FIND vdb(out) AT=1k
+let target = gain_db - 3
+meas ac f3db_hz   WHEN vdb(out)=$&target FALL=1
+meas ac ugf_hz    WHEN vdb(out)=0 FALL=1
+wrdata build/cs_ac.dat vdb(out)
+tran 20n 60u
+meas tran vout_pp PP v(out) FROM=30u TO=60u
+quit
+.endc
+.end
